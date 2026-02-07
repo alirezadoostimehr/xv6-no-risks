@@ -46,3 +46,28 @@ You will need a RISC-V "newlib" tool chain from
 https://github.com/riscv/riscv-gnu-toolchain, and qemu compiled for
 riscv64-softmmu.  Once they are installed, and in your shell
 search path, you can run "make qemu".
+
+
+#### How to run this project?
+
+*NOTE*: This document has been tested and verified on Ubuntu. Contributions for other operating systems are welcome.
+
+Firstly, you should install the following dependencies:
+```bash
+sudo apt install build-essential gdb-multiarch qemu-system-misc gcc-riscv64-linux-gnu binutils-riscv64-linux-gnu
+```
+
+Then, remove the old generated files using following command:
+```bash
+make clean
+```
+
+After that, build the project and filesystem images using following command:
+```bash
+make && make fs.img
+```
+
+Finally, run the project using
+```bash
+make qemu
+```
