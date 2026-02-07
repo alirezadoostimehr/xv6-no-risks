@@ -1,0 +1,221 @@
+\documentclass[a4paper]{article}
+
+\usepackage[english]{babel}
+\usepackage{hyperref}
+\usepackage{float}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage[colorinlistoftodos]{todonotes}
+\usepackage{listings}
+\usepackage{xcolor}
+
+% Define colors for terminal-style code
+\definecolor{terminalback}{RGB}{40,44,52}
+\definecolor{terminaltext}{RGB}{171,178,191}
+\definecolor{terminalcomment}{RGB}{92,99,112}
+\definecolor{terminalkeyword}{RGB}{198,120,221}
+
+% Terminal-style listing
+\lstdefinestyle{terminal}{
+    backgroundcolor=\color{terminalback},
+    basicstyle=\ttfamily\small\color{terminaltext},
+    breaklines=true,
+    frame=single,
+    frameround=tttt,
+    rulecolor=\color{terminalback},
+    numbers=none,
+    xleftmargin=10pt,
+    xrightmargin=10pt,
+    aboveskip=10pt,
+    belowskip=10pt,
+}
+
+% Code listing style
+\lstdefinestyle{code}{
+    backgroundcolor=\color{white},
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    keywordstyle=\color{blue},
+    commentstyle=\color{green!60!black},
+    stringstyle=\color{red},
+    xleftmargin=15pt,
+    xrightmargin=10pt,
+    aboveskip=10pt,
+    belowskip=10pt,
+}
+
+\title{Adding Custom System Calls to xv6-riscv Operating System}
+
+\author{\normalsize Alireza Doostimehr \\\normalsize Student Number: 400442135}
+\date{\color{black}February 2026}
+
+\begin{document}
+\maketitle
+
+\section{Introduction}
+
+This project adds a custom \texttt{getticks} system call to the xv6-riscv operating system. This system call returns the number of timer ticks since the system started running.
+
+The complete source code and implementation details are available at:
+\url{https://github.com/alirezadoostimehr/xv6-no-risks}
+
+\section{Implementation Process}
+
+Adding a system call to xv6-riscv requires changes to several files across both user space and kernel space. The following sections explain each step in detail.
+
+\subsection{System Call Number Assignment}
+
+Every system call needs a unique identification number. This number is used by the kernel to determine which function to execute when a system call is made.
+
+\textbf{File:} \texttt{kernel/syscall.h}
+
+\begin{lstlisting}[style=code, language=C]
+#define SYS_getticks 23
+\end{lstlisting}
+
+This definition assigns the number 23 to our new system call. The kernel uses this number to look up the correct function in its system call table.
+
+\subsection{User-Space Interface}
+
+User programs need to know the function signature to call the system call properly.
+
+\textbf{File:} \texttt{user/user.h}
+
+\begin{lstlisting}[style=code, language=C]
+int getticks(void);
+\end{lstlisting}
+
+This declaration tells the compiler that \texttt{getticks} is a function that takes no arguments and returns an integer value.
+
+\subsection{User-Space Stub Creation}
+
+The user-space stub generates the assembly code that performs the actual system call.
+
+\textbf{File:} \texttt{user/usys.pl}
+
+\begin{lstlisting}[style=code]
+entry("getticks");
+\end{lstlisting}
+
+This Perl script generates assembly code that loads the system call number into register \texttt{a7} and executes the \texttt{ecall} instruction to trap into kernel mode.
+
+\subsection{Kernel Implementation}
+
+The kernel function implements the actual logic of the system call.
+
+\textbf{File:} \texttt{kernel/sysproc.c}
+
+\begin{lstlisting}[style=code, language=C]
+uint64 sys_getticks(void) {
+  uint temp;
+  acquire(&tickslock);
+  temp = ticks;
+  release(&tickslock);
+  return temp;
+}
+\end{lstlisting}
+
+This function reads the global \texttt{ticks} variable, which is updated by the timer interrupt handler. The function uses a spinlock (\texttt{tickslock}) to ensure thread-safe access, preventing race conditions when multiple processes might try to read the ticks value at the same time.
+
+\subsection{System Call Registration}
+
+The kernel needs to know which function to call when it receives a system call request.
+
+\textbf{File:} \texttt{kernel/syscall.c}
+
+First, we declare the external function:
+
+\begin{lstlisting}[style=code, language=C]
+extern uint64 sys_getticks(void);
+\end{lstlisting}
+
+Then, we add it to the system call table:
+
+\begin{lstlisting}[style=code, language=C]
+static uint64 (*syscalls[])(void) = {
+  // ... other system calls ...
+  [SYS_getticks] sys_getticks,
+};
+\end{lstlisting}
+
+This array maps system call numbers to their corresponding kernel functions. When a user program executes \texttt{ecall} with system call number 23, the kernel looks up this array and calls \texttt{sys\_getticks()}.
+
+\subsection{Test Program}
+
+To verify the system call works correctly, we created a test program.
+
+\textbf{File:} \texttt{user/getticks.c}
+
+\begin{lstlisting}[style=code, language=C]
+#include "kernel/types.h"
+#include "kernel/stat.h"
+#include "user/user.h"
+
+int main(int argc, char *argv[]) {
+  printf("Now: %d\n", getticks());
+  exit(0);
+}
+\end{lstlisting}
+
+\subsection{Build Configuration}
+
+Finally, we need to tell the build system to compile our code.
+
+\textbf{File:} \texttt{Makefile}
+
+\begin{lstlisting}[style=code]
+UPROGS=\
+  # ... other programs ...
+  $U/_getticks\
+\end{lstlisting}
+
+\section{Execution Flow}
+
+When a user types \texttt{getticks} in the xv6 shell and presses enter, the following sequence of events occurs:
+
+\begin{enumerate}
+    \item The shell executes the \texttt{getticks} program from the filesystem
+    \item The program starts running in user mode and calls the \texttt{getticks()} function
+    \item The user-space stub (generated by \texttt{usys.pl}) loads syscall number 23 into register \texttt{a7}
+    \item The stub executes the \texttt{ecall} instruction, which triggers a trap into kernel mode
+    \item The CPU switches to supervisor mode and jumps to the trap handler
+    \item The kernel reads the syscall number from register \texttt{a7}
+    \item The kernel looks up \texttt{syscalls[23]} in the system call table and finds \texttt{sys\_getticks}
+    \item The kernel calls \texttt{sys\_getticks()}, which:
+    \begin{itemize}
+        \item Acquires the \texttt{tickslock} spinlock
+        \item Reads the current value of the \texttt{ticks} global variable
+        \item Releases the lock
+        \item Returns the value
+    \end{itemize}
+    \item The kernel puts the return value in register \texttt{a0}
+    \item The CPU returns to user mode
+    \item The \texttt{getticks()} function returns with the value from \texttt{a0}
+    \item The program prints the result using \texttt{printf}
+    \item The program exits
+\end{enumerate}
+
+The \texttt{ticks} variable is a global counter in the kernel that gets incremented every time a timer interrupt occurs.
+
+\section{Testing Results}
+
+The \texttt{getticks} system call was tested by running the test program at different times after system boot:
+
+\begin{lstlisting}[style=terminal]
+$ getticks
+Now: 271
+$ getticks
+Now: 329
+\end{lstlisting}
+
+The increasing tick values show that the system call correctly reads the kernel's tick counter.
+
+\subsection{Additional Work}
+
+A \texttt{revrev} system call was also added as a fun exercise. This system call takes a string as input, reverses it, and prints the reversed string.
+
+\end{document}
