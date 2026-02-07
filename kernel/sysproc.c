@@ -107,3 +107,13 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64 sys_revrev(void) {
+  char inp[128];
+  int len;
+  if((len = argstr(0, inp, sizeof(inp))) < 0)
+    return -1;
+  for (int i = len - 1; ~i; i--) printf("%c", inp[i]);
+  printf("\n");
+  return 0;
+}
