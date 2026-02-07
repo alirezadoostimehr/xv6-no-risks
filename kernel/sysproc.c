@@ -117,3 +117,11 @@ uint64 sys_revrev(void) {
   printf("\n");
   return 0;
 }
+
+uint64 sys_getticks(void) {
+  uint temp;
+  acquire(&tickslock);
+  temp = ticks;
+  release(&tickslock);
+  return temp;
+}
